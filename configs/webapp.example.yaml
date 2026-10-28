@@ -1,0 +1,28 @@
+# Copy to configs/webapp.yaml; this file never contains credentials.
+# All paths in THIS file resolve relative to its directory.
+version: 1
+repo: ..
+project: webapp
+host: 127.0.0.1
+port: 8776
+read_only: false
+
+# Set after creating/editing servers/my-cluster.local.yaml.
+# null starts the UI without enabling submissions.
+server_profile: null
+# Optional multi-GPU-site routing file; null uses the server profile's GPU.
+gpu_targets: null
+
+resource_policy: web-resources.local.json
+resource_limits: web-resource-limits.local.json
+# Initial policy values; the UI persists subsequent changes in the JSON above.
+max_gpu_jobs: 1
+max_msa_jobs: 1
+queue_grace_seconds: 120
+
+scientific_defaults:
+  seed: 42
+  rfd3: {enabled: false, samples: 1}
+  mpnn: {sequences: 1, temperature: 0.1}
+  msa: {batch_size: 16, batch_scope: backbone, gpu: false}
+  folding: {model: protenix-v2, seeds: [101], samples: 1, need_atom_confidence: true}

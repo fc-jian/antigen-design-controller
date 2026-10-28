@@ -1,0 +1,41 @@
+# Copy to my-cluster.local.yaml and replace every /CONFIGURE path.
+# All paths here refer to the backend Linux filesystem, not your laptop.
+foundry_weights: /CONFIGURE/models/foundry/checkpoints
+msa:
+  database: /CONFIGURE/databases/colabfold
+  database_version: CONFIGURE_RELEASE_ID
+  cache_root: /CONFIGURE/owned/msa-cache
+  script: /CONFIGURE/Protenix/scripts/colabfold_msa.py
+  mmseqs: /CONFIGURE/bin/mmseqs
+  db1: uniref30_2302_db
+  db3: colabfold_envdb_202108_db
+  threads: 8
+  gpu: false
+folding:
+  weights: /CONFIGURE/models/protenix/checkpoint
+  data_root: /CONFIGURE/models/protenix
+execution:
+  backend: slurm
+  transport: openssh
+  # Both aliases may be the same login host. Use your ~/.ssh/config.
+  cpu_host: cluster-login
+  gpu_host: cluster-login
+  msa_host: null
+  remote_root: /CONFIGURE/owned/antigen-design
+  shared_root: /CONFIGURE/owned/antigen-design
+  ssh_binary: ssh
+  scp_binary: scp
+  python:
+    prepare: /CONFIGURE/envs/controller/bin/python
+    metrics: /CONFIGURE/envs/controller/bin/python
+    rfd3: /CONFIGURE/envs/foundry/bin/python
+    mpnn: /CONFIGURE/envs/foundry/bin/python
+    msa: /CONFIGURE/envs/msa/bin/python
+    fold: /CONFIGURE/envs/protenix/bin/python
+  max_gpu_jobs: 1
+  max_msa_jobs: 1
+  resources:
+    cpu: {cpus: 8, memory: 64G, time: '04:00:00', partition: cpu}
+    gpu: {cpus: 4, memory: 32G, time: '02:00:00', gres: 'gpu:1', partition: gpu}
+    metrics: {cpus: 2, memory: 4G, time: '00:30:00', partition: cpu}
+# Memory and partitions are examples, not capacity guarantees. Configure for your databases.

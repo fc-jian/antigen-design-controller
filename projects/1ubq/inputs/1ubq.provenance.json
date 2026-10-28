@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "pdb_id": "1UBQ",
+  "source": "https://files.rcsb.org/download/1UBQ.cif",
+  "entry_url": "https://www.rcsb.org/structure/1UBQ",
+  "retrieved_utc": "2026-10-12T19:35:47.617891+00:00",
+  "sha256": "056f98710cb2b36f633c45e41902a02eb446e82871da21ff2dd44f74a56ca0f6",
+  "organism": "Homo sapiens",
+  "protein": "ubiquitin",
+  "expected_residues": 76,
+  "selection_rationale": "Non-pathogen housekeeping protein, monomeric structural benchmark; no biological activity optimization.",
+  "scope": "Engineering acceptance only; not antigen efficacy validation or a general biosafety classifier."
+}

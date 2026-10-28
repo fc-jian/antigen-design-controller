@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "build_backend"
+backend-path = ["."]
+
+[project]
+name = "antigen-design"
+version = "0.1.0"
+description = "Auditable region-constrained protein design and independent structure evaluation"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "src/antigen_design/web/vendor/3Dmol-LICENSE.txt"]
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26,<3", "biopython>=1.83,<2", "PyYAML>=6,<7"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+build = ["build>=1,<2"]
+
+[project.scripts]
+antigen-design = "antigen_design.cli:main"
+antigen-web = "antigen_design.web_ui.__main__:main"
+
+[tool.setuptools.package-data]
+antigen_design = ["web/*", "web/vendor/*"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

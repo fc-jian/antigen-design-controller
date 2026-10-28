@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "ubiquitin-fixed-length-engineering-demo-v1",
+  "model": "protenix-v2",
+  "metric_version": "ca-mapped-v1",
+  "gates": {
+    "reference_all_coverage": {"min": 1, "max": 1},
+    "reference_retained_coverage": {"min": 1, "max": 1},
+    "reference_all_rmsd_fit_all": {"max": 2},
+    "reference_all_lddt": {"min": 0.8}
+  },
+  "objectives": {"reference_all_rmsd_fit_all": "min", "reference_all_lddt": "max"},
+  "diversity": {"max_candidates": 10, "min_sequence_distance": 0.01}
+}

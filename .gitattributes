@@ -1,0 +1,6 @@
+* text=auto eol=lf
+# Preserve public structural data and upstream notices byte-for-byte.
+*.cif -text -whitespace
+src/antigen_design/web/vendor/3Dmol-LICENSE.txt -text -whitespace
+*.png binary
+*.jpg binary

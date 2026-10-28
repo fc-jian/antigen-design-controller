@@ -1,0 +1,10 @@
+schema_version: 1
+input: ../inputs/1ubq.cif
+output: ../runs/ubiquitin-p3
+numbering: original
+seed: 42
+selection:
+  regions: ['A:10-12']
+rfd3: {enabled: true, samples: 1}
+mpnn: {sequences: 1, temperature: 0.1}
+folding: {model: protenix-v2, seeds: [101], samples: 1}

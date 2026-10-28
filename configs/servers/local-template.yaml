@@ -1,0 +1,21 @@
+# CLI-only local Linux/WSL execution. Replace paths with local installations.
+foundry_weights: /CONFIGURE/models/foundry/checkpoints
+msa:
+  database: /CONFIGURE/databases/colabfold
+  database_version: CONFIGURE_RELEASE_ID
+  cache_root: /CONFIGURE/owned/msa-cache
+  script: /CONFIGURE/Protenix/scripts/colabfold_msa.py
+  mmseqs: /CONFIGURE/bin/mmseqs
+  threads: 8
+folding:
+  weights: /CONFIGURE/models/protenix/checkpoint
+  data_root: /CONFIGURE/models/protenix
+execution:
+  backend: local
+  transport: native
+  python:
+    rfd3: /CONFIGURE/envs/foundry/bin/python
+    mpnn: /CONFIGURE/envs/foundry/bin/python
+    msa: /CONFIGURE/envs/msa/bin/python
+    fold: /CONFIGURE/envs/protenix/bin/python
+    metrics: /CONFIGURE/envs/controller/bin/python

@@ -1,0 +1,25 @@
+schema_version: 1
+input: ../inputs/1ubq.cif
+output: ../runs/ubiquitin-matrix
+numbering: original
+seed: 42
+selection:
+  region_sets:
+    - name: one_equal_3
+      regions: ['A:10-12']
+    - name: one_shortened_5_to_4
+      regions: [{region: 'A:8-12', length: [4, 4]}]
+    - name: one_extended_3_to_5
+      regions: [{region: 'A:10-12', length: [5, 5]}]
+    - name: two_equal_regions
+      regions: ['A:10-12', 'A:45-47']
+    - name: three_mixed_regions
+      regions:
+        - {region: 'A:10-12', length: [4, 4]}
+        - {region: 'A:45-47', length: [2, 2]}
+        - {region: 'A:62-64', length: [3, 3]}
+rfd3: {enabled: true, samples: 1}
+mpnn: {sequences: 2, temperature: 0.1}
+msa: {batch_size: 32, ignore_index: true, db_load_mode: 0, gpu: false}
+folding: {model: protenix-v2, seeds: [101], samples: 1}
+execution: {max_gpu_jobs: 2, max_msa_jobs: 1}

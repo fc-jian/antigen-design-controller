@@ -1,0 +1,17 @@
+[Unit]
+Description=Antigen Studio local web controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Replace all three paths. Use a systemd USER service, not root.
+WorkingDirectory=/CONFIGURE/checkout
+ExecStart=/CONFIGURE/checkout/.venv/bin/antigen-web --config /CONFIGURE/checkout/configs/webapp.yaml
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONIOENCODING=utf-8
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,16 @@
+# Optional; set webapp.yaml gpu_targets to the path of your private copy.
+enabled: true
+poll_seconds: 45
+queue_grace_seconds: 120
+targets:
+  - id: gpu-site-a
+    label: My GPU cluster
+    host: cluster-login
+    root: /CONFIGURE/owned/gpu-capsules
+    python: /CONFIGURE/envs/protenix/bin/python
+    weights: /CONFIGURE/models/protenix/checkpoint
+    data_root: /CONFIGURE/models/protenix
+    resources: {cpus: 4, memory: 32G, time: '02:00:00', gres: 'gpu:1', partition: gpu}
+    design:
+      python: /CONFIGURE/envs/foundry/bin/python
+      weights: /CONFIGURE/models/foundry/checkpoints

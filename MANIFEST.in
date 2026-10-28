@@ -1,0 +1,14 @@
+include LICENSE README.md THIRD_PARTY_NOTICES.md
+include AGENTS.md SECURITY.md .gitignore .gitattributes
+include build_backend.py
+recursive-include src/antigen_design/web *.html *.css *.js *.md *.txt
+recursive-include configs *template.yaml *.example.yaml
+recursive-include docs *.md
+recursive-include deploy *.example
+include projects/README.md projects/1ubq/README.md
+include projects/1ubq/inputs/1ubq.cif projects/1ubq/inputs/1ubq.provenance.json
+include projects/1ubq/configs/ubiquitin.yaml projects/1ubq/configs/ubiquitin-p3.yaml
+include projects/1ubq/configs/ubiquitin-matrix.yaml projects/1ubq/configs/screening-example.json
+recursive-include scripts *.py
+recursive-include tests *.py *.cjs
+# Explicit patterns intentionally exclude local configuration and generated runs.
