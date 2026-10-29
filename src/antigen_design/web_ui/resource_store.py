@@ -4,9 +4,10 @@ from antigen_design.config import build_plan, validate_config
 from antigen_design.deployment import settings, profile
 from .results import Store as ResultsStore
 from .resource_policy import policy, limits, catalog, msa_catalog
+from .inputs import ProjectInputs
 
 
-class Store(ResultsStore):
+class Store(ProjectInputs, ResultsStore):
     def resources(self, value=None):
         config = profile(self.repo)
         if value is not None and config is None:

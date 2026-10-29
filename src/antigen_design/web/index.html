@@ -10,94 +10,89 @@
 </head>
 <body>
 <aside class="sidebar">
-  <a class="brand" href="/"><span class="brand-icon">a<span>·</span></span><span>ANTIGEN<br><small>STUDIO / 本地工作台</small></span></a>
-  <div class="nav-label">WORKSPACE</div>
+  <a class="brand" href="/"><span class="brand-icon">a<span>·</span></span><span>ANTIGEN<br><small>STUDIO</small></span></a>
   <nav aria-label="工作区">
-    <button class="nav active" data-page="folding"><span>⌁</span>Folding<small>结构预测</small></button>
-    <button class="nav" data-page="design"><span>◈</span>Design<small>区域设计</small></button>
-    <button class="nav" data-page="monitor"><span>▥</span>任务监控<i id="job-count" hidden>0</i></button>
+    <button class="nav active" data-page="folding" title="结构预测"><span aria-hidden="true">⌁</span>结构预测</button>
+    <button class="nav" data-page="design" title="区域设计"><span aria-hidden="true">◈</span>区域设计</button>
+    <button class="nav" data-page="monitor" title="任务监控"><span aria-hidden="true">▥</span>任务监控<i id="job-count" hidden>0</i></button>
   </nav>
-  <div class="sidebar-note"><span class="live-dot"></span> LOCAL WORKSPACE<p>序列 → 结构 → 设计<br>从输入到可追溯的计算结果。</p></div>
-  <div class="sidebar-bottom"><span>Protenix v2</span><small>CPU MSA · Slurm / 裸金属 GPU</small><small id="connection">正在连接本地服务…</small></div>
+  <div class="sidebar-bottom"><span>Protenix v2</span><small id="connection">正在连接…</small></div>
 </aside>
 <main>
-  <header class="topbar"><div><span class="crumb">工作空间</span><span class="slash">/</span><span id="breadcrumb">结构预测</span></div><div class="local-pill"><span class="live-dot"></span>个人 · 本地运行</div></header>
+  <header class="topbar"><span id="breadcrumb">结构预测</span><div class="local-pill"><span class="live-dot"></span>本地服务</div></header>
   <div id="toast" role="status" hidden></div>
   <section id="page-folding" class="page">
-    <div class="page-heading"><div class="eyebrow">01 / PREDICT</div><h1>从序列，探索结构。</h1><p>批量输入分子，自动完成 CPU MSA 与 Protenix v2 GPU 推理。</p></div>
+    <div id="fold-source" class="card source-banner" hidden></div>
+    <div class="page-heading"><h1>结构预测</h1></div>
     <div class="workspace-grid">
       <div class="card">
         <div class="card-heading"><h2>分子输入</h2><span class="tag">FASTA / JSON</span></div>
-        <label for="fold-name">任务名称</label><input id="fold-name" placeholder="请输入任务名称" maxlength="120" required>
+        <label for="fold-name">项目名称</label><input id="fold-name" placeholder="请输入项目名称" maxlength="120" required>
         <div class="field-heading"><label for="fold-input">序列或任务 JSON</label><div class="button-row"><button class="text-button" id="fold-example">载入 1UBQ 示例</button><button class="text-button" id="fold-upload">导入文件 ↗</button></div></div>
         <input id="fold-file" type="file" accept=".fasta,.fa,.faa,.json,.txt" hidden>
         <textarea id="fold-input" class="code-input" spellcheck="false" placeholder=">protein_1&#10;输入大写蛋白序列&#10;&#10;每条 FASTA 记录分别预测。&#10;复合物、配体、核酸与修饰请使用 JSON。"></textarea>
         <div class="input-foot"><span id="input-stat">等待输入</span><span>最多 100 个任务 / 批次</span></div>
-        <details class="help"><summary>JSON 兼容范围与示例</summary><p>支持 AlphaFold 3、AlphaFold Server 及 Protenix 实体格式：蛋白、DNA/RNA、CCD 或 SMILES 配体、修饰、共价键。JSON 的 modelSeeds 优先于右侧默认种子。</p><p>当前只搜索蛋白 MSA。自定义 CCD、外部 MSA、模板及未知字段会返回明确错误。</p><pre>{"name":"complex","dialect":"alphafold3","version":1,
+        <details class="help"><summary>JSON 格式与示例</summary><p>支持 AlphaFold 3、AlphaFold Server 和 Protenix 格式：蛋白、DNA/RNA、CCD/SMILES 配体、修饰及共价键。modelSeeds 优先于默认种子。</p><p>仅搜索蛋白 MSA。不支持自定义 CCD、外部 MSA、模板及未知字段。</p><pre>{"name":"complex","dialect":"alphafold3","version":1,
  "modelSeeds":[101],"sequences":[
    {"protein":{"id":"A","sequence":"ACDEFGHIK"}},
    {"ligand":{"id":"B","ccdCodes":["ATP"]}},
    {"rna":{"id":"C","sequence":"ACGU"}}]}</pre><p><a href="https://github.com/google-deepmind/alphafold3/blob/main/docs/input.md" target="_blank" rel="noreferrer">AF3 输入规范 ↗</a> · <a href="https://github.com/bytedance/Protenix/blob/main/docs/infer_json_format.md" target="_blank" rel="noreferrer">Protenix 输入输出规范 ↗</a></p></details>
       </div>
       <div class="right-column">
-        <div class="card"><div class="card-heading"><h2>运行设置</h2><span class="tiny-label">PROTENIX V2</span></div>
-          <p class="small-note">使用全局资源池自动调度，无需为项目选择集群。</p>
+        <div class="card"><div class="card-heading"><h2>运行设置</h2></div>
           <div class="resource-note" id="fold-resources"></div>
           <div class="two-columns"><div><label for="fold-seeds">默认随机种子</label><input id="fold-seeds" value="101" placeholder="101, 102"></div><div><label for="fold-samples">每个种子的样本数</label><input id="fold-samples" type="number" min="1" max="20" value="1"></div></div>
-          <div class="pipeline"><div><b>01</b><span>输入校验</span><small>实体 / 化学标识</small></div><div><b>02</b><span>CPU MSA</span><small>批量搜索 / 缓存复用</small></div><div><b>03</b><span>GPU inference</span><small>Protenix v2</small></div><div><b>04</b><span>结果分析</span><small>结构 / confidence</small></div></div>
           <button class="primary wide" id="fold-preview">检查输入与资源 <span>→</span></button>
         </div>
-        <div class="note-card"><span class="eyebrow">TRACEABLE BY DESIGN</span><h3>每一步，都有记录。</h3><p>保留输入、配置、模型身份、执行任务 ID 与产物校验记录。浏览器关闭后，已启动的控制器继续运行。</p></div>
       </div>
     </div>
   </section>
   <section id="page-design" class="page" hidden>
-    <div class="page-heading compact"><div><div class="eyebrow">02 / DESIGN</div><h1>选定区域，构建候选。</h1><p>在结构与序列间同步选择，保留每个候选的原始残基映射。</p></div><div class="button-row"><button class="secondary" id="design-example">1UBQ 示例</button><button class="primary" id="design-upload">导入 PDB / CIF ↑</button><input type="file" id="design-file" accept=".pdb,.cif,.mmcif" hidden></div></div>
+    <div id="design-source" class="card source-banner" hidden></div>
+    <div class="page-heading compact"><h1>区域设计</h1><div class="button-row"><button class="secondary" id="design-example">1UBQ 示例</button><button class="primary" id="design-upload">导入 PDB / CIF ↑</button><input type="file" id="design-file" accept=".pdb,.cif,.mmcif" hidden></div></div>
     <div class="design-grid">
       <div>
-        <div class="card structure-card"><div class="card-heading"><h2 id="structure-title">结构浏览器</h2><div class="button-row"><span class="tag" id="residue-count">0 residues</span><button class="text-button" id="reset-view">重置视角</button></div></div>
-          <div id="design-viewer" class="molecule-view"><div class="viewer-empty"><span>◈</span><h3>载入你的蛋白结构</h3><p>支持 PDB / mmCIF<br>或用 1UBQ 探索工作流程</p></div></div>
+        <div class="card structure-card"><div class="card-heading"><h2 id="structure-title">结构</h2><div class="button-row"><span class="tag" id="residue-count">0 个残基</span><button class="text-button" id="reset-view">重置视角</button></div></div>
+          <div id="design-viewer" class="molecule-view"><div class="viewer-empty"><h3>未载入结构</h3><p>导入 PDB / mmCIF，或载入 1UBQ 示例。</p></div></div>
           <div class="viewer-legend"><span><i class="swatch blue"></i>保留区域</span><span><i class="swatch orange"></i>设计区域</span><span id="hover-residue">点击残基选定 · 拖动旋转 · 滚轮缩放</span></div>
           <div class="sequence-header"><h3>氨基酸序列</h3><div class="button-row"><button class="text-button" id="exclude-buried" disabled title="仅从当前选区删除 rSASA &lt; 0.2 的残基；全部蛋白链共同计算">排除非表面位点</button><button class="text-button" id="clear-selection">清空选择</button></div></div>
-          <p class="small-note" id="surface-status" role="status">Hover 查看原始编号和残基信息；Shift + 点击选择区间。</p>
-          <div id="sequence-panel" class="sequence-panel"><p class="muted">载入结构后显示序列。Shift + 点击可选择区间。</p></div>
+          <p class="small-note" id="surface-status" role="status">悬停查看原始编号；Shift + 点击选择区间。</p>
+          <div id="sequence-panel" class="sequence-panel"><p class="muted">载入结构后显示序列。</p></div>
           <div id="structure-warnings" class="small-note"></div>
         </div>
         <div class="card regions-card"><div class="card-heading"><h2>设计区间</h2><span id="selected-count" class="tag">未选择</span></div>
           <div class="region-entry"><input id="region-input" aria-label="原始残基区间" placeholder="原始编号，如 A:10-12 或 A:11A-15"><button id="add-region" class="secondary">添加区间</button></div>
-          <p class="small-note">支持链 ID、负编号、插入码与多个不相邻区间。长度指结构中实际存在的残基。</p>
-          <div id="region-list" class="region-list"><p class="muted">从结构、序列或编号输入开始选择。</p></div>
+          <p class="small-note">支持负编号、插入码和多段区间；长度按实际残基数计算。</p>
+          <div id="region-list" class="region-list"><p class="muted">未选择设计区间。</p></div>
         </div>
       </div>
       <div class="card design-settings">
-        <div class="card-heading"><h2>设计设置</h2><span class="tiny-label">REGIONAL</span></div>
-        <label for="design-name">任务名称</label><input id="design-name" placeholder="请输入任务名称" maxlength="120" required>
-        <p class="small-note">使用全局资源池自动调度，无需为项目选择集群。</p>
+        <div class="card-heading"><h2>设计设置</h2></div>
+        <label for="design-name">项目名称</label><input id="design-name" placeholder="请输入项目名称" maxlength="120" required>
         <div class="resource-note" id="design-resources"></div>
         <fieldset class="mode-picker"><legend>设计方式</legend><label><input type="radio" name="method" value="mpnn" checked><span><strong>固定骨架 · MPNN</strong><small>仅重新设计选区序列</small></span></label><label><input type="radio" name="method" value="rfd3"><span><strong>骨架生成 · RFD3 + MPNN</strong><small>支持每段变长设计</small></span></label></fieldset>
         <div class="two-columns"><div><label for="design-backbones">骨架数</label><input id="design-backbones" type="number" value="1" min="1" max="50" disabled></div><div><label for="design-sequences">每骨架序列数</label><input id="design-sequences" type="number" value="1" min="1" max="100"></div></div>
         <div class="two-columns"><div><label for="design-temp">MPNN temperature</label><input id="design-temp" type="number" value="0.1" min="0.01" max="2" step="0.05"></div><div><label for="design-seed">设计随机种子</label><input id="design-seed" type="number" value="42" min="0"></div></div>
-        <div class="two-columns"><div><label for="design-seeds">预测随机种子</label><input id="design-seeds" value="101"></div><div><label for="design-samples">每种子预测数</label><input id="design-samples" type="number" min="1" max="20" value="1"></div></div>
-        <div class="small-note flow-note">自动接续<br><strong>设计 → 批量 CPU MSA → GPU 推理 → 评估</strong><p>报告结构一致性、覆盖率和置信度；计算分数不代表实验功能。</p></div>
+        <div class="two-columns"><div><label for="design-seeds">预测随机种子</label><input id="design-seeds" value="101"></div><div><label for="design-samples">每个种子的样本数</label><input id="design-samples" type="number" min="1" max="20" value="1"></div></div>
         <button id="design-preview" class="primary wide">检查设计与资源 <span>→</span></button>
       </div>
     </div>
   </section>
   <section id="page-monitor" class="page" hidden>
-    <div class="page-heading compact"><div><div class="eyebrow">03 / OBSERVE</div><h1>计算进展，一目了然。</h1><p>仅展示本应用提交的任务。执行状态与产物校验结果分别记录。</p></div><button id="refresh-jobs" class="secondary">刷新 ↻</button></div>
+    <div class="page-heading compact"><div><h1>任务监控</h1><p>仅显示本应用的项目。</p></div><button id="refresh-jobs" class="secondary">刷新 ↻</button></div>
     <div id="job-stats" class="stats-grid"></div>
     <p id="manager-health" role="status"></p>
-    <label for="filter-archive">历史记录</label><select id="filter-archive"><option value="current">未归档</option><option value="archived">已归档</option><option value="all">全部记录</option></select>
+    <label for="filter-archive">归档状态</label><select id="filter-archive"><option value="current">未归档</option><option value="archived">已归档</option><option value="all">全部记录</option></select>
     <div class="card">
-      <div class="card-heading"><h2>并发调度上限</h2><span class="tag">所有网页任务共享</span></div>
+      <div class="card-heading"><h2>全局并发上限</h2></div>
       <div class="button-row limit-controls">
         <label for="gpu-limit">GPU 作业（0 表示不限）</label><input id="gpu-limit" type="number" min="0" step="1" value="0">
         <label for="msa-limit">MSA 作业</label><input id="msa-limit" type="number" min="1" step="1" value="8">
         <button id="save-limits" class="secondary">应用上限</button>
       </div>
-      <p id="limits-status" role="status">全局并发上限；降低上限不会取消已有作业。</p>
+      <p id="limits-status" role="status">降低上限不取消已有作业。</p>
       <h3>全局允许资源</h3>
-      <p class="small-note">所有项目共用此配置。允许的 Slurm 与裸金属资源按容量与负载自动分配。关闭资源不取消已运行作业。</p>
+      <p class="small-note">按容量与负载自动调度。关闭资源不取消已运行作业。</p>
       <div id="resource-gpu-options" class="resource-options"></div>
       <div id="resource-msa-options" class="resource-options"></div>
       <label for="resource-queue-grace">无资源排队转投等待（秒）</label>
@@ -106,8 +101,8 @@
       <p id="resources-status" role="status">正在载入全局资源…</p>
     </div>
     <div class="card"><div class="card-heading"><h2>运行记录</h2><div class="button-row"><select id="filter-profile" aria-label="筛选集群"><option value="">所有集群</option></select><select id="filter-state" aria-label="筛选状态"><option value="">所有状态</option><option value="active">运行中</option><option value="succeeded">已完成</option><option value="problem">需要处理</option></select></div></div>
-      <div class="table-scroll"><table><thead><tr><th>任务 / 工作流</th><th>集群</th><th>进度</th><th>状态</th><th>创建时间</th><th></th></tr></thead><tbody id="jobs-body"></tbody></table></div>
-      <div id="jobs-empty" class="empty-state"><span>▥</span><h3>工作台已就绪</h3><p>提交第一个 Folding 或 Design 任务后，<br>这里会显示各阶段的实时进展。</p></div>
+      <div class="table-scroll"><table><thead><tr><th>项目</th><th>集群</th><th>进度</th><th>状态</th><th>创建时间</th><th></th></tr></thead><tbody id="jobs-body"></tbody></table></div>
+      <div id="jobs-empty" class="empty-state"><h3>暂无记录</h3><p>可调整筛选条件，或新建项目。</p></div>
       <div class="button-row"><button id="jobs-prev" class="secondary">上一页</button><span id="jobs-page" role="status"></span><button id="jobs-next" class="secondary">下一页</button></div>
     </div>
   </section>
@@ -115,13 +110,16 @@
     <div class="page-heading compact"><a class="text-button" href="#/monitor">← 返回项目列表</a><button id="refresh-project" class="secondary">刷新 ↻</button></div>
     <div id="job-detail"></div>
   </section>
+  <section id="page-input" class="page" hidden>
+    <a id="input-back" class="text-button" href="#/monitor">← 返回项目详情</a>
+    <div class="card"><p id="input-loading" role="status">正在载入原始输入…</p></div>
+  </section>
   <section id="page-result" class="page" hidden>
     <div class="page-heading compact"><a id="result-back" class="text-button" href="#/monitor">← 返回项目详情</a></div>
     <div class="card" id="results-panel"></div>
   </section>
-  <footer>ANTIGEN STUDIO <span>输入可追溯 · 阶段可恢复 · 结果可核验</span></footer>
 </main>
-<dialog id="preview-dialog"><div class="dialog-header"><div><div class="eyebrow">REVIEW & SUBMIT</div><h2>确认本次计算</h2></div><button class="icon-button" id="close-preview" aria-label="关闭">×</button></div><div id="preview-body"></div><div class="dialog-actions"><button id="back-preview" class="secondary">返回编辑</button><button id="submit-job" class="primary">提交计算任务 →</button></div></dialog>
+<dialog id="preview-dialog"><div class="dialog-header"><h2>确认提交</h2><button class="icon-button" id="close-preview" aria-label="关闭">×</button></div><div id="preview-body"></div><div class="dialog-actions"><button id="back-preview" class="secondary">返回编辑</button><button id="submit-job" class="primary">提交计算任务 →</button></div></dialog>
 <dialog id="rename-dialog" aria-labelledby="rename-heading"><form id="rename-form"><div class="dialog-header"><h2 id="rename-heading">修改项目名称</h2></div><label for="rename-name">项目名称</label><input id="rename-name" maxlength="120" required><p id="rename-error" role="alert"></p><div class="dialog-actions"><button type="button" id="cancel-rename" class="secondary">取消</button><button type="submit" id="save-rename" class="primary">保存名称</button></div></form></dialog>
 </body>
 </html>

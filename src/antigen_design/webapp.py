@@ -226,7 +226,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/assets":
                 result = self.app.store.upload(data["filename"], data["content"])
             elif path == "/api/benchmark":
-                benchmark = self.app.store.repo / "projects" / "1ubq" / "inputs" / "1ubq.cif"
+                benchmark = STATIC / "examples" / "1ubq.cif"
                 result = self.app.store.upload("1ubq.cif", benchmark.read_text())
             elif path == "/api/preview":
                 result = self.app.store.preview(data)

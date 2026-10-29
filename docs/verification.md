@@ -29,3 +29,12 @@ Synchronized required task names, independent display-name editing, list archive
 - Frontend Node suite: **26 passed**.
 - Browser verification used an isolated 120-task synthetic record with controllers disabled: rename updated both detail and list, pagination showed rows 51–100, logs loaded on expansion, and archive/restore worked directly from the list.
 - Public-tree privacy scanning and documentation checks passed. No real backend connection, compute submission or inference was used for this synchronization.
+
+## Input and result UI synchronization — 2026-10-29
+
+Synchronized the streamlined interface, original-input read-only view, editable copies with fresh submission IDs/source provenance, per-chain FASTA copying with manual fallback, camera reset and identifiable CIF downloads. Added only their supporting input API; the open-source deployment configuration and existing project-local web storage remain unchanged. Packaged the same public 1UBQ example for wheel installations.
+
+- Full Linux/WSL Python suite: **437 passed**; frontend Node suite: **42 passed**.
+- Tests cover source-file checksums, path confinement, cross-origin rejection, immutable source requests, fresh-copy identity, and late configuration defaults preserving original inputs/copies.
+- Browser verification used synthetic records with controllers disabled. Original inputs stayed read-only, new copies required a new name, and the public 1UBQ structure rendered with working sequence-copy and camera-reset controls. It was explicitly labeled as a public structure, not a new prediction.
+- Public-file/privacy and documentation checks passed; wheel and source archives were rebuilt and inspected, including the bundled benchmark. No real backend connection, compute submission or inference was performed.

@@ -22,7 +22,7 @@ antigen-design = "antigen_design.cli:main"
 antigen-web = "antigen_design.web_ui.__main__:main"
 
 [tool.setuptools.package-data]
-antigen_design = ["web/*", "web/vendor/*"]
+antigen_design = ["web/*", "web/vendor/*", "web/examples/*.cif"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

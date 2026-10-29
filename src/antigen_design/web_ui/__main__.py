@@ -23,6 +23,18 @@ class Handler(BaseHandler):
             except (ValueError, OSError) as exc:
                 return self.respond({'error': str(exc)}, 403 if isinstance(exc, PermissionError) else 400)
         parts=urlsplit(self.path).path.strip('/').split('/')
+        if len(parts) in (4, 5) and parts[:2] == ['api', 'jobs'] and parts[3] == 'input':
+            try:
+                self.trusted()
+                if len(parts) == 4:
+                    return self.respond(self.app.store.original_input(parts[2]))
+                return self.file(self.app.store.original_input_file(parts[2], parts[4]))
+            except PermissionError as exc:
+                return self.respond({'error': str(exc)}, 403)
+            except FileNotFoundError:
+                return self.respond({'error': '原始输入文件不存在'}, 404)
+            except (ValueError, KeyError, TypeError, OSError) as exc:
+                return self.respond({'error': str(exc)}, 400)
         if len(parts)==4 and parts[:2]==['api','jobs'] and parts[3] in ('overview','extras'):
             try:
                 self.trusted()
