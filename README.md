@@ -26,8 +26,8 @@
 取得仓库后，进入仓库根目录（以下命令均为 Bash）：
 
 ```bash
-# 将占位地址替换成你实际发布或克隆的仓库地址
-git clone REPLACE_WITH_REPOSITORY_URL antigen-design
+# 克隆公开仓库
+git clone https://github.com/fc-jian/antigen-design-controller.git antigen-design
 cd antigen-design
 python3.12 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
