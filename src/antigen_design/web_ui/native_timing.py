@@ -3,6 +3,7 @@ import json
 import math
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from antigen_design.io import fingerprint, read_json, write_json
@@ -86,6 +87,26 @@ class NativeTiming:
     def __init__(self):
         self.lock = threading.RLock()
         self.failures = {}
+        self.pending = {}
+        self.background_lock = threading.Lock()
+        self.pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix='web-native-clock')
+
+    def background_record(self, root, plan, name, state):
+        """Return a verified cached clock; never wait on SSH in a page request."""
+        query = request_for(plan, name, state)
+        key = fingerprint(query)
+        path = root / 'web-monitor/native-timing' / (key + '.json')
+        if path.exists():
+            saved = read_json(path)
+            if saved.get('query') != query:
+                raise ValueError('Native timing cache identity mismatch')
+            return validate_record(saved['record'], query['request'])
+        # Do not share the synchronous record lock: it may be held during SSH.
+        with self.background_lock:
+            self.pending = {k:v for k,v in self.pending.items() if not v.done()}
+            if key not in self.pending and len(self.pending) < 2:
+                self.pending[key] = self.pool.submit(self.record, root, plan, name, state)
+        raise ValueError('起止时间正在后台核对，请稍后刷新')
 
     def record(self, root, plan, name, state):
         query = request_for(plan, name, state)
@@ -115,7 +136,7 @@ class NativeTiming:
                 self.failures[key] = (time.monotonic() + 30, str(exc))
                 raise
 
-    def enrich(self, root, plan, name, state, observation):
+    def enrich(self, root, plan, name, state, observation, *, background=False):
         observed = observation or {}
         if not native_task(plan, name, state, observed):
             return observation
@@ -135,7 +156,7 @@ class NativeTiming:
             if timestamp(result.get('finished_at')):
                 record = result
             else:
-                record = self.record(root, plan, name, state)
+                record = (self.background_record if background else self.record)(root, plan, name, state)
             result.update({key: record.get(key) for key in ('created_at', 'started_at', 'finished_at')})
             result['elapsed'] = elapsed(record, terminal=True)
             result['timing_source'] = 'native job start/end timestamps'

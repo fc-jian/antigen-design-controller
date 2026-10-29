@@ -20,3 +20,12 @@ Check commands are listed in the [README](../README.md). CI configuration for Py
 No real SSH backend was contacted for this release, no compute jobs were submitted, no database was converted, and no new model inference was performed. To claim end-to-end acceptance on a deployment, obtain required dependencies/authorized weights, run a fresh 1UBQ case, check scheduler accounting and validate real artifacts and receipts. The installed adapter version and all model parameters must remain explicit.
 
 The current supported folding model is Protenix v2. Its separately licensed weights are not distributed. GPU MSA full-database acceptance, arbitrary non-Slurm GPU servers, and all future upstream model API versions are outside these checks.
+
+## Frontend synchronization — 2026-10-29
+
+Synchronized required task names, independent display-name editing, list archive/restore, 50-row project pagination, lazy log/scheduling panels, request cancellation, and the supporting compact read APIs/cache. The portable deployment configuration, configured scientific defaults, unconfigured-backend safeguards and generic host fixtures remain in place.
+
+- Full Linux/WSL Python suite: **429 passed**.
+- Frontend Node suite: **26 passed**.
+- Browser verification used an isolated 120-task synthetic record with controllers disabled: rename updated both detail and list, pagination showed rows 51–100, logs loaded on expansion, and archive/restore worked directly from the list.
+- Public-tree privacy scanning and documentation checks passed. No real backend connection, compute submission or inference was used for this synchronization.

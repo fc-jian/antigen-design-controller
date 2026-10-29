@@ -6,7 +6,7 @@ import json
 import os
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit, unquote
+from urllib.parse import urlsplit, unquote, parse_qs
 from antigen_design.webapp import Handler as BaseHandler
 from .application import Application
 from .connections import install
@@ -23,6 +23,18 @@ class Handler(BaseHandler):
             except (ValueError, OSError) as exc:
                 return self.respond({'error': str(exc)}, 403 if isinstance(exc, PermissionError) else 400)
         parts=urlsplit(self.path).path.strip('/').split('/')
+        if len(parts)==4 and parts[:2]==['api','jobs'] and parts[3] in ('overview','extras'):
+            try:
+                self.trusted()
+                if parts[3]=='overview':
+                    return self.respond(self.app.store.overview(parts[2]))
+                query=parse_qs(urlsplit(self.path).query)
+                return self.respond(self.app.store.extras(parts[2],query.get('kind',['logs'])[0],
+                    int(query.get('offset',['0'])[0]),int(query.get('limit',['50'])[0])))
+            except PermissionError as exc:
+                return self.respond({'error':str(exc)},403)
+            except (ValueError,KeyError,TypeError,OSError) as exc:
+                return self.respond({'error':str(exc)},400)
         if len(parts) in (5,6) and parts[:2]==['api','jobs'] and parts[3]=='results':
             try:
                 self.trusted()
@@ -41,7 +53,10 @@ class Handler(BaseHandler):
         return super().do_GET()
 
     def do_POST(self):
-        if urlsplit(self.path).path != '/api/resources':
+        path = urlsplit(self.path).path
+        parts = path.strip('/').split('/')
+        rename = len(parts) == 4 and parts[:2] == ['api', 'jobs'] and parts[3] == 'rename'
+        if path != '/api/resources' and not rename:
             return super().do_POST()
         try:
             self.trusted(mutate=True)
@@ -52,6 +67,8 @@ class Handler(BaseHandler):
                 raise ValueError('Invalid resource settings size')
             data = json.loads(self.rfile.read(length))
             with self.app.lock:
+                if rename:
+                    return self.respond(self.app.store.rename(parts[2], data))
                 return self.respond(self.app.store.resources(data))
         except (ValueError, TypeError, KeyError, OSError) as exc:
             return self.respond({'error': str(exc)}, 403 if isinstance(exc, PermissionError) else 400)

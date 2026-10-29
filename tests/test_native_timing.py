@@ -95,7 +95,7 @@ def test_native_identity_mismatch_never_displays_stale_duration(case, field, val
     write_json(journal, record)
     observed = store.detail(job)['tasks'][0]['observation']
     assert observed['elapsed'] is None and observed['timing_error']
-    assert not (root / 'web-monitor').exists()
+    assert not (root / 'web-monitor/native-timing').exists()
 
 
 def test_changed_remote_plan_is_rejected(case):
@@ -145,7 +145,7 @@ def test_connection_failure_is_bounded_and_does_not_restore_increasing_time(case
     for _ in range(2):
         observed = store.detail(job)['tasks'][0]['observation']
         assert observed['elapsed'] is None and 'offline' in observed['timing_error']
-    assert len(calls) == 1 and not (root / 'web-monitor').exists()
+    assert len(calls) == 1 and not (root / 'web-monitor/native-timing').exists()
 
 
 def test_existing_monitor_timestamps_need_no_remote_fetch(case):

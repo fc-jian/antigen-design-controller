@@ -28,7 +28,7 @@
     <div class="workspace-grid">
       <div class="card">
         <div class="card-heading"><h2>分子输入</h2><span class="tag">FASTA / JSON</span></div>
-        <label for="fold-name">任务名称</label><input id="fold-name" placeholder="例如：ubiquitin-folding" value="ubiquitin-folding" maxlength="120">
+        <label for="fold-name">任务名称</label><input id="fold-name" placeholder="请输入任务名称" maxlength="120" required>
         <div class="field-heading"><label for="fold-input">序列或任务 JSON</label><div class="button-row"><button class="text-button" id="fold-example">载入 1UBQ 示例</button><button class="text-button" id="fold-upload">导入文件 ↗</button></div></div>
         <input id="fold-file" type="file" accept=".fasta,.fa,.faa,.json,.txt" hidden>
         <textarea id="fold-input" class="code-input" spellcheck="false" placeholder=">protein_1&#10;输入大写蛋白序列&#10;&#10;每条 FASTA 记录分别预测。&#10;复合物、配体、核酸与修饰请使用 JSON。"></textarea>
@@ -71,7 +71,7 @@
       </div>
       <div class="card design-settings">
         <div class="card-heading"><h2>设计设置</h2><span class="tiny-label">REGIONAL</span></div>
-        <label for="design-name">任务名称</label><input id="design-name" value="ubiquitin-design" maxlength="120">
+        <label for="design-name">任务名称</label><input id="design-name" placeholder="请输入任务名称" maxlength="120" required>
         <p class="small-note">使用全局资源池自动调度，无需为项目选择集群。</p>
         <div class="resource-note" id="design-resources"></div>
         <fieldset class="mode-picker"><legend>设计方式</legend><label><input type="radio" name="method" value="mpnn" checked><span><strong>固定骨架 · MPNN</strong><small>仅重新设计选区序列</small></span></label><label><input type="radio" name="method" value="rfd3"><span><strong>骨架生成 · RFD3 + MPNN</strong><small>支持每段变长设计</small></span></label></fieldset>
@@ -122,5 +122,6 @@
   <footer>ANTIGEN STUDIO <span>输入可追溯 · 阶段可恢复 · 结果可核验</span></footer>
 </main>
 <dialog id="preview-dialog"><div class="dialog-header"><div><div class="eyebrow">REVIEW & SUBMIT</div><h2>确认本次计算</h2></div><button class="icon-button" id="close-preview" aria-label="关闭">×</button></div><div id="preview-body"></div><div class="dialog-actions"><button id="back-preview" class="secondary">返回编辑</button><button id="submit-job" class="primary">提交计算任务 →</button></div></dialog>
+<dialog id="rename-dialog" aria-labelledby="rename-heading"><form id="rename-form"><div class="dialog-header"><h2 id="rename-heading">修改项目名称</h2></div><label for="rename-name">项目名称</label><input id="rename-name" maxlength="120" required><p id="rename-error" role="alert"></p><div class="dialog-actions"><button type="button" id="cancel-rename" class="secondary">取消</button><button type="submit" id="save-rename" class="primary">保存名称</button></div></form></dialog>
 </body>
 </html>

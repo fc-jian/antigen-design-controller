@@ -69,8 +69,8 @@ function harness() {
     return elements.get(id);
   }
   const context = vm.createContext({
-    document: {getElementById: element, querySelectorAll: () => [], createElement: () => ({dataset: {}})},
-    window: {addEventListener() {},location:{hash:''},history:{pushState() {}}}, URLSearchParams, setTimeout, clearTimeout,
+    document: {getElementById: element, querySelectorAll: () => [], createElement: () => ({dataset: {},addEventListener() {}})},
+    window: {addEventListener() {},location:{hash:''},history:{pushState() {}}}, URLSearchParams, AbortController, setTimeout, clearTimeout,
     $3Dmol: {createViewer() {return {addModel(text) {models.push(text);}, setStyle() {}, zoomTo() {}, render() {}};}},
     fetch: async () => {throw new Error('Unexpected network access');},
   });
@@ -83,13 +83,32 @@ function harness() {
 function job(id) {
   return {id, name: id, mode: 'folding', profile: 'test', state: 'running', tasks: [], results: []};
 }
+
+test('creation names start empty and whitespace is rejected before preview', () => {
+  const html=fs.readFileSync(path.join(__dirname,'../src/antigen_design/web/index.html'),'utf8');
+  for(const prefix of ['fold','design']) {
+    const input=html.match(new RegExp(`<input id="${prefix}-name"[^>]*>`))[0];
+    assert.doesNotMatch(input,/\bvalue=/);
+    const h=harness();h.element(prefix+'-name').value='   ';
+    assert.throws(()=>h.run(`request('${prefix}')`),/请填写任务名称/);
+  }
+});
+
+test('name-only changes refresh project heading with escaped text', async () => {
+  const h=harness();let value=job('a');
+  h.context.requestAPI=async()=>value;h.run('api=requestAPI');
+  await h.run('openJob()');
+  value={...value,name:'新项目 <example>'};
+  await h.run('openJob()');
+  assert.match(h.element('job-detail').innerHTML,/新项目 &lt;example&gt;/);
+});
 function result(id) {
   return {id, confidence: {ranking_score: id + 1}, metrics: {}, residues: [], pae: null};
 }
 
 test('late job response cannot overwrite the selected job', async () => {
   const h = harness(), a = deferred(), b = deferred();
-  h.context.requestAPI = key => key === 'jobs/a' ? a.promise : b.promise;
+  h.context.requestAPI = key => key === 'jobs/a/overview' ? a.promise : b.promise;
   h.run('api=requestAPI');
   const old = h.run('openJob()');
   const latest = h.run('currentJob="b";openJob()');
@@ -279,4 +298,60 @@ test('deep links open a project directly without needing the current list page',
   h.context.requestAPI=async()=>job(id);h.run('api=requestAPI');await h.run('loadRoute()');
   assert.equal(h.run('currentPage'),'project');assert.equal(h.run('currentJob'),id);
   assert.match(h.element('job-detail').innerHTML,new RegExp(id));
+});
+
+test('large project renders one page and does not request collapsed details',async()=>{
+  const h=harness(),calls=[];
+  const value={...job('a'),tasks:Array.from({length:120},(_,i)=>({id:'task_'+i,stage:'fold',host:'cpu',state:'succeeded',attempts:1})),
+    results:Array.from({length:120},(_,i)=>({id:'metrics_'+i+'~0',name:'result_'+i,seed:101,sample:0}))};
+  h.context.requestAPI=async key=>{calls.push(key);return value;};h.run('api=requestAPI');
+  await h.run('openJob()');
+  let html=h.element('job-detail').innerHTML;
+  assert.match(html,/task_49</);assert.doesNotMatch(html,/task_50</);
+  assert.match(html,/result_49</);assert.doesNotMatch(html,/result_50</);
+  assert.deepEqual(calls,['jobs/a/overview']);
+  h.run('taskOffset=50;resultOffset=100;paintJob(displayedJob)');
+  html=h.element('job-detail').innerHTML;
+  assert.match(html,/task_50</);assert.doesNotMatch(html,/task_49</);
+  assert.match(html,/result_119</);assert.doesNotMatch(html,/result_99</);
+  assert.equal(calls.length,1); // Paging uses the compact snapshot already loaded.
+});
+
+test('list archive stays in the list and returns to the last nonempty page',async()=>{
+  const h=harness(),calls=[];
+  h.context.button={disabled:false,dataset:{archive:'a',archived:'false'}};
+  h.context.requestAPI=async(key,data)=>{
+    calls.push([key,data]);
+    if(key==='jobs/a/archive')return {id:'a',archived:true};
+    return {items:[],total:25,counts:{total:26}};
+  };
+  h.run('api=requestAPI;currentPage="monitor";jobsOffset=25');
+  await h.run('archiveFromList(button)');
+  assert.equal(calls[0][0],'jobs/a/archive');
+  assert.equal(calls.length,3);
+  assert.match(calls[1][0],/offset=25/);assert.match(calls[2][0],/offset=0/);
+  assert.equal(h.run('currentPage'),'monitor');assert.equal(h.context.button.disabled,false);
+});
+
+test('archive buttons are available for stopped rows and restoration, never active rows',()=>{
+  const h=harness();
+  h.context.values=[{...job('active')},{...job('done'),state:'succeeded'},
+    {...job('archived'),state:'failed',archived:true},{...job('broken'),state:'failed',unavailable:true}];
+  h.run('jobs=values;renderJobs()');
+  const html=h.element('jobs-body').innerHTML;
+  assert.match(html,/data-archive="done"/);assert.match(html,/data-archive="archived"[^>]*>取消归档/);
+  assert.doesNotMatch(html,/data-archive="(?:active|broken)"/);
+});
+
+test('new list request aborts obsolete fetch and does not wait for health',async()=>{
+  const h=harness(),late=deferred(),signals=[];
+  h.context.requestAPI=(key,data,options)=>{
+    assert.notEqual(key,'health');signals.push(options.signal);
+    return signals.length===1?late.promise:Promise.resolve({items:[],total:0,counts:{total:7}});
+  };
+  h.run('api=requestAPI;currentPage="monitor"');
+  const old=h.run('refreshJobs()');await h.run('refreshJobs(true)');
+  assert.equal(signals[0].aborted,true);
+  late.resolve({items:[],total:0,counts:{total:1}});await old;
+  assert.equal(h.element('job-count').textContent,7);
 });

@@ -6,14 +6,18 @@ import re
 import shutil
 import tarfile
 import tempfile
+from collections import OrderedDict
 import threading
 from pathlib import Path
-from antigen_design.io import read_json, digest, fingerprint
+from antigen_design.io import read_json, write_json, digest, fingerprint
 from antigen_design.folding_results import cif_residues, summary, annotate_design
 from antigen_design.transport import get_transport
 from antigen_design.web_store import Store as BaseStore
 from . import export as exporter
 from .native_timing import NativeTiming
+from .names import Names
+from .listing import Listing
+from .read_cache import ReadCache, stamp
 
 
 def eligible(plan, manifest, name):
@@ -163,43 +167,101 @@ def result_from_directory(root, plan, target, name, index, result_id):
     return annotate_design(result,plan)
 
 
-class Store(BaseStore):
+class Store(Names, Listing, BaseStore):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self._snapshots={}
         self._snapshot_lock=threading.RLock()
+        self._indexes=OrderedDict()
         self._native_timing=NativeTiming()
+        self._reads=ReadCache()
 
     def snapshot(self,root):
-        path=root/'pipeline/manifest.json'
-        stat=path.stat()
-        key=(stat.st_ino,stat.st_mtime_ns,stat.st_size)
-        with self._snapshot_lock:
-            cached=self._snapshots.get(str(root))
-            if cached and cached[0]==key:
-                return cached[1],cached[2]
-            plan=read_json(root/'pipeline/plan.json')
-            manifest=read_json(path)
-            # Capsules embed complete plans; retain their checksums, not hundreds
-            # of megabytes of copies, in the web read cache.
-            for state in manifest['tasks'].values():
-                for record in (state,*state.get('history',[])):
-                    route=record.get('route',{})
-                    capsule=route.pop('plan',None)
-                    if capsule is not None and record.get('stage')=='fold':
-                        route['plan_fingerprint']=fingerprint(capsule)
-            self._snapshots[str(root)]=(key,plan,manifest)
-            return plan,manifest
+        return self._reads.get(root/'pipeline/plan.json'), self.manifest(root)
 
-    def _detail(self, job):
+    def overview(self, job):
+        self.job_root(job)
+        try:
+            return self._detail(job, compact=True)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            return self.unavailable(job, exc)
+
+    def result_index(self, root, plan, manifest):
+        version = [stamp(root/'pipeline/plan.json'), stamp(root/'pipeline/manifest.json'),
+                   stamp(root/'results.json') if (root/'results.json').exists() else None]
+        with self._snapshot_lock:
+            cached = self._indexes.get(str(root))
+            if cached and cached[0] == version:
+                self._indexes.move_to_end(str(root))
+                return cached[1]
+        saved_path=root/'web-monitor/read-cache/result-index.json'
+        if saved_path.exists():
+            try:
+                saved=read_json(saved_path)
+                if saved.get('version')==1 and saved.get('stamp')==version:
+                    with self._snapshot_lock:
+                        self._indexes[str(root)]=(version,saved['value'])
+                        while len(self._indexes)>32:
+                            self._indexes.popitem(last=False)
+                    return saved['value']
+            except (OSError,ValueError,KeyError,TypeError):
+                pass
+        previews, complete = [], True
+        for name in plan['tasks']:
+            if not eligible(plan, manifest, name):
+                continue
+            path = root/'pipeline/tasks'/name/'metrics.json'
+            if not path.exists():
+                complete = False
+                continue
+            for index, row in enumerate(read_json(path)):
+                previews.append({'id':f'{name}~{index}', 'task':name,
+                    'name':row.get('name',row.get('design',name)), 'seed':row['fold_seed'],
+                    'sample':row['sample'], 'preview':True})
+        if not previews and (root/'results.json').exists():
+            previews = [{k:v for k,v in row.items() if k in ('id','name','seed','sample')}
+                        for row in self._reads.get(root/'results.json')]
+        if complete:
+            write_json(saved_path,{'version':1,'stamp':version,'value':previews})
+            with self._snapshot_lock:
+                self._indexes[str(root)] = (version, previews)
+                self._indexes.move_to_end(str(root))
+                while len(self._indexes)>32:
+                    self._indexes.popitem(last=False)
+        return previews
+
+    def extras(self, job, kind, offset=0, limit=50):
+        if kind not in ('logs', 'scheduling') or offset<0 or not 1<=limit<=100:
+            raise ValueError('Invalid detail page')
+        root = self.job_root(job)
+        manifest = self.manifest(root) if (root/'pipeline/manifest.json').exists() else {'tasks':{}}
+        monitor = self._reads.get(root/'monitor.json') if (root/'monitor.json').exists() else {}
+        if kind == 'logs':
+            rows = [{'id':name,'job_id':s.get('job_id'),'log_tail':s['log_tail']}
+                    for name,s in monitor.get('tasks',{}).items() if s.get('log_tail')]
+        else:
+            rows = [{'id':name, **{k:v for k,v in s.items() if k in ('routing_reason','route','history','host','imported')}}
+                    for name,s in manifest['tasks'].items() if s.get('routing_reason') or s.get('history')]
+        result = {'items':rows[offset:offset+limit], 'total':len(rows), 'offset':offset, 'limit':limit}
+        if kind == 'logs':
+            path=root/'controller.log'
+            if path.exists():
+                with path.open('rb') as stream:
+                    stream.seek(max(0,path.stat().st_size-16000))
+                    result['controller_log']=stream.read().decode(errors='replace')
+        else:
+            result['gpu_routing']=manifest.get('gpu_routing')
+        return result
+
+    def _detail(self, job, compact=False):
         root = self.job_root(job)
         request,status=read_json(root/'request.json'),read_json(root/'status.json')
         value={'id':job,**{k:request[k] for k in ('name','mode','profile')},**status,'tasks':[],'results':[]}
+        value['name']=self.display_name(job, value['name'])
         value['archived']=read_json(root/'archive.json')['archived'] if (root/'archive.json').exists() else False
         value['download_ready'] = (root / 'pipeline/deliverables.tar.gz').is_file() and (root/'results.json').exists()
-        if (root/'results.json').exists():
+        if not compact and (root/'results.json').exists():
             value['results']=read_json(root/'results.json')
-        if (root/'controller.log').exists():
+        if not compact and (root/'controller.log').exists():
             with (root/'controller.log').open('rb') as stream:
                 stream.seek(max(0,(root/'controller.log').stat().st_size-16000))
                 value['controller_log']=stream.read().decode(errors='replace')
@@ -208,17 +270,27 @@ class Store(BaseStore):
                 value.update(initializing=True,error='Initialization incomplete; waiting for manifest')
             return value
         plan,manifest=self.snapshot(root)
-        monitor=read_json(root/'monitor.json') if (root/'monitor.json').exists() else {}
+        monitor=self._reads.get(root/'monitor.json') if (root/'monitor.json').exists() else {}
         value.update(observed_at=monitor.get('observed_at'),monitor_error=monitor.get('error'),gpu_routing=manifest.get('gpu_routing'))
         for name,task in plan['tasks'].items():
             state=manifest['tasks'][name]
             item={'id':name,'stage':task['stage'],'host':task['host'],**state,'observation':monitor.get('tasks',{}).get(name)}
-            item['observation']=self._native_timing.enrich(root,plan,name,state,item['observation'])
+            item['observation']=self._native_timing.enrich(root,plan,name,state,item['observation'],background=compact)
             if state.get('route'):
                 item['route']={k:v for k,v in state['route'].items() if k in ('id','target','resources','input_sha256','input_bytes')}
             item['history']=[{k:v for k,v in h.items() if k in ('host','job_id','attempts','slurm_state','execution_state','backend','state','error','resources')}
                              for h in state.get('history',[])]
+            if compact:
+                fields=('id','stage','host','state','job_id','attempts','backend','execution_state','slurm_state',
+                        'pool','pool_state','pool_phase','transfer_phase','transfer_error','error','observation')
+                item={k:v for k,v in item.items() if k in fields}
+                if item.get('observation'):
+                    item['observation']={k:v for k,v in item['observation'].items() if k!='log_tail'}
             value['tasks'].append(item)
+        if compact:
+            value.pop('gpu_routing',None)
+            value['results']=self.result_index(root,plan,manifest)
+            return value
         previews=[]
         for name in plan['tasks']:
             if not eligible(plan,manifest,name):

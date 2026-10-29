@@ -9,6 +9,7 @@ let pending, jobs = [], currentJob, currentResult = 0, monitorBusy = false, curr
 let toastTimer;
 let jobsOffset=0, jobsTotal=0, jobsCounts={total:0,active:0,succeeded:0,problem:0}, listVersion=0;
 let detailVersion=0, resultVersion=0;
+let listAbort, detailAbort;
 let resultColorMode="confidence";
 function notify(message, error=false) {
   $("toast").textContent = message;
@@ -17,8 +18,8 @@ function notify(message, error=false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => $("toast").hidden = true, error ? 14000 : 5000);
 }
-async function api(path, data) {
-  const response = await fetch("/api/" + path, data === undefined ? {} : {
+async function api(path, data, options={}) {
+  const response = await fetch("/api/" + path, data === undefined ? options : {...options,
     method:"POST", headers:{"Content-Type":"application/json","X-Antigen-Client":"local"},
     body:JSON.stringify(data)
   });
@@ -36,7 +37,10 @@ async function busy(button, action) {
   try { return await action(); } finally { button.disabled = false; }
 }
 function navigate(page, updateURL=true) {
-  if(page!==currentPage) { detailVersion++;resultVersion++;detailSignature=""; }
+  if(page!==currentPage) {
+    detailVersion++;resultVersion++;detailSignature="";
+    detailAbort?.abort();listAbort?.abort();listVersion++;monitorBusy=false;
+  }
   currentPage = page;
   document.querySelectorAll(".page").forEach(el => el.hidden = el.id !== "page-" + page);
   document.querySelectorAll(".nav").forEach(el => el.classList.toggle("active", el.dataset.page === (["project","result"].includes(page)?"monitor":page)));
@@ -52,7 +56,7 @@ async function loadRoute() {
     currentJob=parts[1];detailVersion++;resultVersion++;detailSignature="";
     if(parts.length===4&&parts[2]==="results") {
       navigate("result",false);
-      const version=detailVersion,job=await api("jobs/"+currentJob);
+      const version=detailVersion,job=await api("jobs/"+currentJob+"/overview");
       if(version!==detailVersion||currentPage!=="result")return;
       await openResultPage(job,decodeURIComponent(parts[3]));
     } else {navigate("project",false);await openJob();}
@@ -128,6 +132,7 @@ function seeds(prefix) {
   return values;
 }
 function request(prefix) {
+  if(!$(prefix + "-name").value.trim()) throw new Error("请填写任务名称");
   const data = {name:$(prefix + "-name").value.trim(),
                 mode:prefix === "fold" ? "folding" : "design", seeds:seeds(prefix),
                 samples:Number($(prefix + "-samples").value)};
@@ -375,34 +380,47 @@ function renderJobs() {
   const filtered=jobs;
   $("jobs-body").innerHTML=filtered.map(job=>{
     const complete=job.completed_tasks,total=job.task_count;
-    return `<tr><td><strong>${esc(job.name)}</strong><small>${job.mode.toUpperCase()} · ${job.id.slice(0,8)}</small></td><td>${esc(job.profile)}</td><td>${complete} / ${total||"—"} 阶段<div class="progress"><i style="width:${total?100*complete/total:0}%"></i></div></td><td>${badge(job.state)}</td><td><small>${date(job.created_at)}</small></td><td><button class="text-button" data-open="${job.id}">查看 →</button></td></tr>`;
+    const archive=!job.unavailable&&["succeeded","failed","cancelled"].includes(job.state)
+      ?`<button class="text-button" data-archive="${job.id}" data-archived="${Boolean(job.archived)}">${job.archived?"取消归档":"归档"}</button>`:"";
+    return `<tr><td><strong>${esc(job.name)}</strong><small>${job.mode.toUpperCase()} · ${job.id.slice(0,8)}</small></td><td>${esc(job.profile)}</td><td>${complete} / ${total||"—"} 阶段<div class="progress"><i style="width:${total?100*complete/total:0}%"></i></div></td><td>${badge(job.state)}</td><td><small>${date(job.created_at)}</small></td><td><div class="button-row"><button class="text-button" data-open="${job.id}">查看 →</button>${archive}</div></td></tr>`;
   }).join("");
   $("jobs-empty").hidden=filtered.length>0;
   $("jobs-prev").disabled=jobsOffset===0;
   $("jobs-next").disabled=jobsOffset+25>=jobsTotal;
   $("jobs-page").textContent=`${jobsTotal?jobsOffset+1:0}–${Math.min(jobsOffset+25,jobsTotal)} / ${jobsTotal}`;
-  $("jobs-body").querySelectorAll("button").forEach(button=>button.addEventListener("click",async()=>{
+  $("jobs-body").querySelectorAll("[data-open]").forEach(button=>button.addEventListener("click",async()=>{
     currentJob=button.dataset.open; currentResult=0;$("job-detail").innerHTML="正在载入项目…";
     resultVersion++;detailSignature="";
     try { navigate("project");await openJob(); }
     catch(error) { notify(error.message,true); }
   }));
+  $("jobs-body").querySelectorAll("[data-archive]").forEach(button=>button.addEventListener("click",()=>archiveFromList(button)));
+}
+async function archiveFromList(button) {
+  await busy(button,async()=>{
+    try {
+      const archived=button.dataset.archived==="true";
+      await api(`jobs/${button.dataset.archive}/${archived?"unarchive":"archive"}`,{});
+      await refreshJobs(true);
+      notify(archived?"已取消归档":"已归档，可在已归档列表恢复");
+    } catch(error) {notify(error.message,true);}
+  });
 }
 async function refreshJobs(force=false) {
   if(monitorBusy&&!force) return;
   const version=++listVersion;
+  listAbort?.abort();listAbort=new AbortController();
   monitorBusy=true;
+  $("jobs-page").textContent="正在加载…";
   try {
     const query=new URLSearchParams({archive:$("filter-archive").value,profile:$("filter-profile").value,state:$("filter-state").value,offset:jobsOffset,limit:25});
-    const [page,health]=await Promise.all([api("jobs?"+query),api("health")]);
+    const page=await api("jobs?"+query,undefined,{signal:listAbort.signal});
     if(version!==listVersion)return;
-    if(page.total&&jobsOffset>=page.total){jobsOffset=Math.floor((page.total-1)/25)*25;return refreshJobs(true);}
+    if(jobsOffset>0&&jobsOffset>=page.total){jobsOffset=page.total?Math.floor((page.total-1)/25)*25:0;return refreshJobs(true);}
     jobs=page.items;jobsTotal=page.total;jobsCounts=page.counts;renderJobs();
     $("connection").textContent="本地服务已连接";
-    $("manager-health").textContent=!health.enabled?"只读验证模式：后台控制器已禁用":!health.alive?"后台管理线程已停止，请检查服务日志":Object.keys(health.errors).length?`后台检查异常：${Object.entries(health.errors).map(([id,error])=>`${id}: ${error}`).join("；")}`:"后台管理线程正常";
-    if(currentJob&&currentPage==="project") await openJob();
   }
-  catch(error) {if(version===listVersion){$("connection").textContent="连接中断 · 显示上次快照";notify(error.message,true);}}
+  catch(error) {if(error.name!=="AbortError"&&version===listVersion){$("connection").textContent="连接中断 · 显示上次快照";$("jobs-page").textContent="加载失败，请刷新重试";notify(error.message,true);}}
   finally {if(version===listVersion)monitorBusy=false;}
 }
 on("refresh-jobs","click",()=>refreshJobs(true));
@@ -416,21 +434,62 @@ function msaTransferLabel(phase) {
   return ({preparing:"准备输入",uploading:"传输输入",ready:"输入已送达",exporting:"整理结果",returning:"回传结果",validating:"校验结果",verified:"回传已校验"})[phase] || phase;
 }
 let detailSignature="";
+let displayedJob, taskOffset=0, resultOffset=0;
+const detailPageSize=50;
+const extraVersions={logs:0,scheduling:0};
+function pager(kind,offset,total) {
+  if(total<=detailPageSize)return "";
+  return `<div class="button-row detail-pager"><button class="secondary" data-page="${kind}" data-offset="${Math.max(0,offset-detailPageSize)}" ${offset===0?"disabled":""}>上一页</button><span role="status">${offset+1}–${Math.min(offset+detailPageSize,total)} / ${total}</span><button class="secondary" data-page="${kind}" data-offset="${offset+detailPageSize}" ${offset+detailPageSize>=total?"disabled":""}>下一页</button></div>`;
+}
+let renameJobId;
+function editName(job) {
+  renameJobId=job.id;
+  $("rename-name").value=job.name;
+  $("rename-error").textContent="";
+  $("rename-dialog").showModal();
+  $("rename-name").focus();
+}
+on("cancel-rename","click",()=>$("rename-dialog").close());
+on("rename-form","submit",async e=>{
+  e.preventDefault();
+  await busy($("save-rename"),async()=>{
+    try {
+      const name=$("rename-name").value.trim();
+      if(!name||name.length>120)throw new Error("项目名称需为 1–120 个字符");
+      await api(`jobs/${renameJobId}/rename`,{name});
+      $("rename-dialog").close();
+      detailSignature="";
+      await openJob();
+      notify("项目名称已保存");
+    } catch(error) {$("rename-error").textContent=error.message;}
+  });
+});
 const detailPending=new Map();
 async function openJob() {
   const jobId=currentJob;
-  if(detailPending.has(jobId))return detailPending.get(jobId);
+  if(detailPending.has(jobId)&&!detailAbort?.signal.aborted)return detailPending.get(jobId);
   const pending=renderJob(jobId);detailPending.set(jobId,pending);
   try{return await pending;}finally{if(detailPending.get(jobId)===pending)detailPending.delete(jobId);}
 }
 async function renderJob(jobId) {
   const version=++detailVersion;
-  const job=await api("jobs/"+jobId);
+  detailAbort?.abort();detailAbort=new AbortController();
+  let job;
+  try {job=await api("jobs/"+jobId+"/overview",undefined,{signal:detailAbort.signal});}
+  catch(error) {if(error.name==="AbortError")return;throw error;}
   if(version!==detailVersion||jobId!==currentJob||currentPage!=="project")return;
+  if(displayedJob?.id!==job.id){taskOffset=0;resultOffset=0;}
+  displayedJob=job;
+  paintJob(job);
+}
+function paintJob(job) {
+  taskOffset=Math.min(taskOffset,Math.max(0,Math.floor((job.tasks.length-1)/detailPageSize)*detailPageSize));
+  resultOffset=Math.min(resultOffset,Math.max(0,Math.floor((job.results.length-1)/detailPageSize)*detailPageSize));
   // Avoid resetting log selection on unchanged polling snapshots.
-  const signature=JSON.stringify([job.id,job.state,job.archived,job.updated_at,job.observed_at,job.tasks,job.results,job.error,job.monitor_error,job.gpu_routing,job.controller_log]);
+  const signature=JSON.stringify([job,taskOffset,resultOffset]);
   if(signature===detailSignature) return;
   const expanded=Boolean($("task-scheduling")?.open);
+  const logsExpanded=Boolean($("task-logs")?.open);
   detailSignature=signature;
   resultVersion++;
   const canAct=!job.unavailable&&!job.initializing&&!job.archived&&["failed","cancelled","attention"].includes(job.state), active=!job.unavailable&&activeStates.has(job.state);
@@ -438,14 +497,31 @@ async function renderJob(jobId) {
   $("job-detail").innerHTML=`<div class="card detail-card"><div class="card-heading"><h2>${esc(job.name)} ${badge(job.state)}</h2><div class="button-row">${canAct?'<button class="secondary" data-action="resume">恢复检查</button><button class="secondary" data-action="retry">重试失败阶段</button>':""}${!job.unavailable&&(active||job.state==="attention")?'<button class="secondary danger" data-action="cancel">取消运行</button>':""}${job.download_ready?`<a class="secondary" href="/api/jobs/${job.id}/download">下载完整结果 ↓</a>`:""}</div></div>
     <div class="detail-meta">创建：${date(job.created_at)} · 最近调度查询：${date(job.observed_at)}<br>运行 ${esc(job.id)} · ${esc(job.profile)} · ${esc(job.verification||"结果尚未通过完整产物校验")}</div>
     ${job.error?`<div class="error-box">${esc(job.error)}</div>`:""}${job.monitor_error?`<div class="error-box">监控更新失败，以下为上次快照：${esc(job.monitor_error)}</div>`:""}
-    <div class="table-scroll"><table><thead><tr><th>阶段 / 任务</th><th>主机 / job ID</th><th>本地校验</th><th>执行状态</th><th>资源 / 用时</th><th>尝试</th></tr></thead><tbody>${job.tasks.map(t=>`<tr><td>${t.stage.toUpperCase()}<small>${esc(t.id)}</small></td><td>${esc(t.host)}<small>${esc(t.job_id||"尚未提交")}</small></td><td>${badge(t.state)}${t.pool?`<small>共享索引池 · 请求 ${esc(msaPoolLabel(t.observation?.pool_state||t.pool_state||"queued"))} · 池 ${esc(msaPoolLabel(t.observation?.pool_phase||t.pool_phase||"queued"))}</small>`:""}${t.transfer_phase?`<small>MSA 交接：${esc(msaTransferLabel(t.transfer_phase))}</small>`:""}${t.transfer_error?`<small>${esc(t.transfer_error)}</small>`:""}${t.error?`<small>${esc(t.error)}</small>`:""}</td><td>${esc(executionState(t))}${t.pool?"<small>共享分配状态</small>":""}${t.observation?.error?`<small>${esc(t.observation.error)}</small>`:""}</td><td>${esc(nativeTask(t)?"裸金属":t.observation?.partition||"—")}<small>${esc(t.observation?.cpus||"—")} CPU · ${esc(t.observation?.memory||"—")} · ${esc(taskElapsed(t))}</small>${nativeTimingDetails(t)}</td><td>${t.attempts}</td></tr>`).join("")}</tbody></table></div>
-    <details class="help" id="task-scheduling"><summary>子任务调度详情（点击展开）</summary>
-    ${job.gpu_routing?`<details class="help"><summary>GPU 自动调度 · ${date(new Date(job.gpu_routing.checked_at*1000).toISOString())}</summary>${job.gpu_routing.targets.map(t=>`<p><b>${esc(t.host)} / ${esc(t.backend==="baremetal"?"裸金属":t.partition)}</b> · 资源快照：${t.free_gpus} 张空闲 GPU${t.compatible===true?" · 环境与权重一致":""}${t.error?`<br><span class="small-note">${esc(t.error)}</span>`:""}</p>`).join("")}<p class="small-note">空闲快照不保证立即获配；Slurm 资源以调度分配为准，裸金属资源以 GPU 锁和实际占用复核为准。</p></details>`:""}
-    ${job.tasks.filter(t=>t.routing_reason||t.history?.length).map(t=>`<details class="help"><summary>${esc(t.id)} · ${esc(t.routing_reason||"转投记录")}</summary><p>${t.route?`输入传输 ${(t.route.input_bytes/1024).toFixed(1)} KiB · SHA-256 ${esc(t.route.input_sha256)}<br>执行 ${esc(t.host)} / ${esc(t.route.target?.backend==="baremetal"?"裸金属":t.route.resources.partition)} · 结果${t.imported?"已校验回传":"等待回传"}`:""}</p>${(t.history||[]).map(h=>`<p>attempt ${h.attempts} · ${esc(h.host)} · job ${esc(h.job_id)} · ${esc(h.slurm_state)}</p>`).join("")}</details>`).join("")}
-    </details>
-    <details class="help"><summary>控制器日志与各阶段日志</summary><h3>控制器</h3><pre class="task-log">${esc(job.controller_log||"暂无日志")}</pre>${job.tasks.filter(t=>t.observation?.log_tail).map(t=>`<details><summary>${esc(t.id)} · ${esc(t.job_id)}</summary><pre class="task-log">${esc(t.observation.log_tail)}</pre></details>`).join("")}</details>
-    <div class="card-heading" style="margin-top:28px"><h2>已完成的结构与指标 <span class="tag">${job.results.length}</span></h2></div><p class="small-note">每个预测的 Folding 与 Metrics 均完成后即可查看，无需等待整个项目。</p><div class="table-scroll"><table><thead><tr><th>预测结果</th><th>Seed / Sample</th><th></th></tr></thead><tbody>${job.results.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.seed)} / ${esc(r.sample)}</td><td><a class="text-button" href="#/jobs/${job.id}/results/${encodeURIComponent(r.id)}">查看结构与指标 →</a></td></tr>`).join("")||'<tr><td colspan="3">尚无已完成 Folding 与 Metrics 的预测。</td></tr>'}</tbody></table></div></div>`;
-  if($("task-scheduling"))$("task-scheduling").open=expanded;
+    <div class="table-scroll"><table><thead><tr><th>阶段 / 任务</th><th>主机 / job ID</th><th>本地校验</th><th>执行状态</th><th>资源 / 用时</th><th>尝试</th></tr></thead><tbody>${job.tasks.slice(taskOffset,taskOffset+detailPageSize).map(t=>`<tr><td>${t.stage.toUpperCase()}<small>${esc(t.id)}</small></td><td>${esc(t.host)}<small>${esc(t.job_id||"尚未提交")}</small></td><td>${badge(t.state)}${t.pool?`<small>共享索引池 · 请求 ${esc(msaPoolLabel(t.observation?.pool_state||t.pool_state||"queued"))} · 池 ${esc(msaPoolLabel(t.observation?.pool_phase||t.pool_phase||"queued"))}</small>`:""}${t.transfer_phase?`<small>MSA 交接：${esc(msaTransferLabel(t.transfer_phase))}</small>`:""}${t.transfer_error?`<small>${esc(t.transfer_error)}</small>`:""}${t.error?`<small>${esc(t.error)}</small>`:""}</td><td>${esc(executionState(t))}${t.pool?"<small>共享分配状态</small>":""}${t.observation?.error?`<small>${esc(t.observation.error)}</small>`:""}</td><td>${esc(nativeTask(t)?"裸金属":t.observation?.partition||"—")}<small>${esc(t.observation?.cpus||"—")} CPU · ${esc(t.observation?.memory||"—")} · ${esc(taskElapsed(t))}</small>${nativeTimingDetails(t)}</td><td>${t.attempts}</td></tr>`).join("")}</tbody></table></div>
+    ${pager("tasks",taskOffset,job.tasks.length)}
+    <details class="help" id="task-scheduling"><summary>子任务调度详情（点击展开）</summary><div id="scheduling-content"></div></details>
+    <details class="help" id="task-logs"><summary>控制器日志与各阶段日志</summary><div id="logs-content"></div></details>
+    <div class="card-heading" style="margin-top:28px"><h2>已完成的结构与指标 <span class="tag">${job.results.length}</span></h2></div><p class="small-note">每个预测的 Folding 与 Metrics 均完成后即可查看，无需等待整个项目。</p><div class="table-scroll"><table><thead><tr><th>预测结果</th><th>Seed / Sample</th><th></th></tr></thead><tbody>${job.results.slice(resultOffset,resultOffset+detailPageSize).map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.seed)} / ${esc(r.sample)}</td><td><a class="text-button" href="#/jobs/${job.id}/results/${encodeURIComponent(r.id)}">查看结构与指标 →</a></td></tr>`).join("")||'<tr><td colspan="3">尚无已完成 Folding 与 Metrics 的预测。</td></tr>'}</tbody></table></div>${pager("results",resultOffset,job.results.length)}</div>`;
+  for(const [kind,open] of [["scheduling",expanded],["logs",logsExpanded]]) {
+    const section=$("task-"+kind);
+    section.open=open;
+    section.addEventListener("toggle",()=>{
+      if(section.open){if(!$(kind+"-content").textContent)loadExtras(kind);}
+      else {extraVersions[kind]++;$(kind+"-content").textContent="";}
+    });
+    if(open)loadExtras(kind);
+  }
+  $("job-detail").querySelectorAll("[data-page]").forEach(button=>button.addEventListener("click",()=>{
+    if(button.dataset.page==="tasks")taskOffset=Number(button.dataset.offset);
+    else resultOffset=Number(button.dataset.offset);
+    paintJob(displayedJob);
+  }));
+  if(!job.unavailable) {
+    const renameButton=document.createElement("button");renameButton.className="secondary";
+    renameButton.textContent="修改名称";
+    renameButton.addEventListener("click",()=>editName(job));
+    $("job-detail").querySelector(".card-heading .button-row").append(renameButton);
+  }
   if(job.results.length) {
     const link=document.createElement("a");link.className="secondary";
     link.href=`#/jobs/${job.id}/results/${encodeURIComponent(job.results[0].id)}`;
@@ -464,9 +540,36 @@ async function renderJob(jobId) {
       if(action==="cancel"&&!confirm("取消这个运行中本应用提交的作业，并停止提交下游任务？")) return;
       if(action==="retry"&&!confirm("保持原输入与参数，显式重试失败/取消阶段？成功产物将保留。")) return;
       await api(`jobs/${job.id}/${action}`,{});
-      detailSignature="";await refreshJobs();
+      detailSignature="";await openJob();
     } catch(error) {notify(error.message,true);}
   })));
+}
+async function loadExtras(kind,offset=0) {
+  const jobId=currentJob,version=++extraVersions[kind];
+  const target=$(kind+"-content");
+  target.textContent="正在加载…";
+  const current=()=>jobId===currentJob&&currentPage==="project"&&version===extraVersions[kind]&&$("task-"+kind).open;
+  try {
+    const data=await api(`jobs/${jobId}/extras?kind=${kind}&offset=${offset}&limit=${detailPageSize}`);
+    if(!current())return;
+    if(kind==="logs") {
+      target.innerHTML=`<h3>控制器</h3><pre class="task-log">${esc(data.controller_log||"暂无日志")}</pre>`+
+        data.items.map(t=>`<details><summary>${esc(t.id)} · ${esc(t.job_id)}</summary><pre class="task-log">${esc(t.log_tail)}</pre></details>`).join("");
+    } else {
+      const routing=data.gpu_routing;
+      target.innerHTML=(routing?`<p>GPU 自动调度 · ${date(new Date(routing.checked_at*1000).toISOString())}</p>`+
+        routing.targets.map(t=>`<p><b>${esc(gpuResourceLabel(t))}</b> · 空闲 GPU ${esc(t.free_gpus)}${t.error?` · ${esc(t.error)}`:""}</p>`).join(""):"")+
+        data.items.map(t=>`<details class="help"><summary>${esc(t.id)} · ${esc(t.routing_reason||"转投记录")}</summary><p>${t.route?`输入传输 ${Number(t.route.input_bytes/1024).toFixed(1)} KiB · SHA-256 ${esc(t.route.input_sha256)}<br>执行 ${esc(t.host)} / ${esc(t.route.target?.backend==="baremetal"?"裸金属":t.route.resources?.partition)} · 结果${t.imported?"已校验回传":"等待回传"}`:""}</p>${(t.history||[]).map(h=>`<p>attempt ${esc(h.attempts)} · ${esc(h.host)} · job ${esc(h.job_id)} · ${esc(h.execution_state||h.slurm_state)}</p>`).join("")}</details>`).join("");
+    }
+    target.innerHTML+=pager(kind,offset,data.total);
+    target.querySelectorAll("[data-page]").forEach(button=>button.addEventListener("click",()=>loadExtras(kind,Number(button.dataset.offset))));
+  } catch(error) {if(current())target.textContent="加载失败："+error.message+"；请收起后重新展开。";}
+}
+async function refreshHealth() {
+  try {
+    const health=await api("health");
+    $("manager-health").textContent=!health.enabled?"只读验证模式：后台控制器已禁用":!health.alive?"后台管理线程已停止，请检查服务日志":Object.keys(health.errors).length?`后台检查异常：${Object.entries(health.errors).map(([id,error])=>`${id}: ${error}`).join("；")}`:"后台管理线程正常";
+  } catch(error) {$("manager-health").textContent="后台状态暂不可用："+error.message;}
 }
 async function openResultPage(job,resultId) {
   currentResult=job.results.findIndex(r=>String(r.id)===String(resultId));
@@ -555,7 +658,12 @@ async function showResult(job) {
 }
 window.addEventListener("resize",()=>{designViewer?.resize();resultViewer?.resize();});
 async function start() {
-  config=await api("config");
+  // Route content does not wait for resource settings or the health endpoint.
+  const route=loadRoute().catch(error=>notify(error.message,true));
+  const settings=Promise.all([api("config"),api("resources"),api("scheduler-limits")]);
+  refreshHealth();
+  const [configuration,resourceSettings,limits]=await settings;
+  config=configuration;globalResources=resourceSettings;
   const defaults=config.defaults||{};
   for(const prefix of ["fold","design"]){
     if(defaults.seeds)$(prefix+"-seeds").value=defaults.seeds.join(", ");
@@ -566,7 +674,6 @@ async function start() {
   }
   document.querySelectorAll('input[name="method"]').forEach(el=>el.checked=el.value===(defaults.rfd3?"rfd3":"mpnn"));
   $("design-backbones").disabled=!defaults.rfd3;
-  globalResources=await api("resources");
   renderResourceSettings();
   on("save-resources","click",()=>busy($("save-resources"),async()=>{
     const settings={version:1,gpu_targets:[...document.querySelectorAll('[data-resource="gpu"]:checked')].map(el=>el.value),msa_backends:[...document.querySelectorAll('[data-resource="msa"]:checked')].map(el=>el.value),queue_grace_seconds:Number($("resource-queue-grace").value)};
@@ -574,7 +681,6 @@ async function start() {
     renderResourceSettings();
     $("resources-status").textContent="已保存全局资源；后续调度检查自动应用。";
   }));
-  const limits=await api("scheduler-limits");
   $("gpu-limit").value=limits.max_gpu_jobs;$("msa-limit").value=limits.max_msa_jobs;
   on("save-limits","click",()=>busy($("save-limits"),async()=>{
     const gpu=Number($("gpu-limit").value),msa=Number($("msa-limit").value);
@@ -586,8 +692,11 @@ async function start() {
   $("filter-profile").innerHTML+=[...config.profiles].map(p=>`<option value="${esc(p.id)}">${esc(p.id)}</option>`).join("");
   resources("fold");resources("design");
   if(!config.profiles.length)notify("尚未配置计算后端。请在 configs/webapp.yaml 设置 server_profile 后重启。",true);
-  await loadRoute();
-  if(["folding","design"].includes(currentPage))refreshJobs();
-  setInterval(()=>{if(currentPage==="monitor")refreshJobs();else if(currentPage==="project")openJob().catch(e=>notify(e.message,true));},10000);
+  await route;
+  setInterval(()=>{
+    if(document.hidden)return;
+    if(currentPage==="monitor"){refreshJobs();refreshHealth();}
+    else if(currentPage==="project")openJob().catch(e=>notify(e.message,true));
+  },10000);
 }
 start().catch(error=>notify(error.message,true));
